@@ -30,19 +30,19 @@ func _enter_tree() -> void:
   var editor_settings := EditorInterface.get_editor_settings()
   editor_settings.settings_changed.connect(_on_settings_changed)
   if not editor_settings.has_setting(GIT_PATH):
-    editor_settings.set_settings(GIT_PATH, "")
-    editor_settings.set_initial_value(GIT_PATH, "", false)
+    editor_settings.set_setting(GIT_PATH, "git")
+    editor_settings.set_initial_value(GIT_PATH, "git", false)
   if not editor_settings.has_setting(GUTTER_WIDTH):
-    editor_settings.set_settings(GUTTER_WIDTH, 6)
+    editor_settings.set_setting(GUTTER_WIDTH, 6)
     editor_settings.set_initial_value(GUTTER_WIDTH, 6, false)
   if not editor_settings.has_setting(COLOR_DELETE):
-    editor_settings.set_settings(COLOR_DELETE, Color.PALE_VIOLET_RED)
+    editor_settings.set_setting(COLOR_DELETE, Color.PALE_VIOLET_RED)
     editor_settings.set_initial_value(COLOR_DELETE, Color.PALE_VIOLET_RED, false)
   if not editor_settings.has_setting(COLOR_ADD):
-    editor_settings.set_settings(COLOR_ADD, Color.LIGHT_GREEN)
+    editor_settings.set_setting(COLOR_ADD, Color.LIGHT_GREEN)
     editor_settings.set_initial_value(COLOR_ADD, Color.LIGHT_GREEN, false)
   if not editor_settings.has_setting(COLOR_REPLACE):
-    editor_settings.set_settings(COLOR_REPLACE, Color.SKY_BLUE)
+    editor_settings.set_setting(COLOR_REPLACE, Color.SKY_BLUE)
     editor_settings.set_initial_value(COLOR_REPLACE, Color.SKY_BLUE, false)
   git_path = editor_settings.get_setting(GIT_PATH)
   gutter_width = editor_settings.get_setting(GUTTER_WIDTH)
@@ -67,12 +67,14 @@ func _exit_tree() -> void:
   editor_settings.settings_changed.disconnect(_on_settings_changed)
   var script_editor = EditorInterface.get_script_editor()
   script_editor.editor_script_changed.disconnect(_on_editor_script_changed)
+  script_editor.focus_entered.disconnect(_on_editor_script_focus_entered)
   resource_saved.disconnect(_on_resource_saved)
   if _gutter_id != -1:
     _editor.gutter_clicked.disconnect(_on_gutter_clicked)
     _editor.remove_gutter(_gutter_id)
-  script_editor.remove_child(_popup_diff)
-  _popup_diff.free()
+  if is_instance_valid(_popup_diff):
+    script_editor.remove_child(_popup_diff)
+    _popup_diff.free()
 
 
 func _on_settings_changed():
@@ -123,15 +125,18 @@ func _on_editor_script_changed(_script: Script = null):
 
   if git_path.is_empty():
     printerr("Git path is not defined (Editor > Editor Settings... > Plugin > Diff-margin)")
+    return
 
-  var path = script_editor.get_current_script().get_path().substr(6, -1)
+  var current_script := script_editor.get_current_script()
+  if current_script == null:
+    return
+  var path := current_script.get_path().trim_prefix("res://")
   var result = []
 
   # check if file is untracked
   var exit_code = OS.execute(git_path, ["status", "-s", path], result)
   if exit_code != 0:
-    if not git_path.is_empty():
-      printerr("Check the git path (Editor > Editor Settings... > Plugin > Diff-margin)")
+    printerr("Check the git path (Editor > Editor Settings... > Plugin > Diff-margin)")
     return
 
   if exit_code == 0 and not result.is_empty() and result[0].substr(0, 2) == "??":
@@ -198,7 +203,6 @@ func _on_undo_diff(line: int):
   var old_content: String = _diffs[_diffs_map[line]][2]
   _editor.remove_text(start, 0, start + count, 0)
   _editor.insert_text(old_content, start, 0)
-  EditorInterface.save_scene()
 
 
 func _on_gutter_custom_draw(line: int, gutter: int, area: Rect2):
